@@ -1,3 +1,6 @@
 [submodule "libraries/ladac"]
 	path = libraries/ladac
 	url = ../ladac.git
+[submodule "data/leisa-data"]
+	path = data/leisa-data
+	url = ../leisa-data.git
