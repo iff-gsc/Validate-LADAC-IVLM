@@ -1,5 +1,8 @@
 function [table_3d,cell_of_tables] = cfdJunaidImportWingAll(folder_name)
 
+disp('RANS import started.')
+tic
+
 % Find folder name in path
 matlab_path = path;
 len_name = length(folder_name);
@@ -56,6 +59,8 @@ for i = 1:num_files
         
         cell_of_tables{i,1} = table_;
         cell_of_tables{i,2} = time;
+
+        % disp(['t=',num2str(time),'s']);
         
     end
 end
@@ -68,6 +73,10 @@ for i = 1:length(var_names)
 	table_3d.(var_names{i}) = table_3d_T.(var_names{i})(:,idx_sort)';
 end
 table_3d.time = time_vec_sort';
+
+
+elapsed_time = toc;
+disp(['RANS import finished after ',num2str(elapsed_time),' seconds.'])
 
 
 end
