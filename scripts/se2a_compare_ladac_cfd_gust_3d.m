@@ -6,7 +6,7 @@ addPathIvlmValidation();
 
 %% load RANS simulation data
 
-% cfd_3d = cfdKhalidImportWingAll('se2a-data/distributions');
+cfd_3d = cfdKhalidImportWingAll('se2a-data/distributions');
 
 %% run VLM simulation
 
