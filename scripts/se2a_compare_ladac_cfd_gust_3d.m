@@ -6,7 +6,7 @@ addPathIvlmValidation();
 
 %% load RANS simulation data
 
-cfd_3d = cfdJunaidImportWingAll('GustOnly/wing');
+% cfd_3d = cfdKhalidImportWingAll('se2a-data/distributions');
 
 %% run VLM simulation
 
@@ -17,7 +17,7 @@ gust.t0 = 0.8;
 flaps.freq = zeros(1,5);
 flaps.magn = zeros(1,5);
 
-vlmout = runVlmValidation( 'leisa', gust, flaps );
+vlmout = runVlmValidation( 'se2a', gust, flaps );
 
 %% use the same sampling for VLM and RANS
 
@@ -31,9 +31,18 @@ end
 eta_interp_idx = vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2 >= min( cfd_3d.eta(1,:) );
 eta_interp = vlmout.wing.geometry.ctrl_pt.pos(2,eta_interp_idx)/vlmout.wing.params.b*2;
 c_L_RANS_interp = zeros( length(cfd_3d.time), length( eta_interp ) );
+
+V = 240.463;
+h = 6000;
+rho = 0.6597;
+S = 79.34688;
+
+Y_diff = [diff(cfd_3d.Y(1,1:2)),diff(cfd_3d.Y(1,:))];
+S_local = Y_diff .* interp1( vlmout.wing.geometry.ctrl_pt.pos(2,end/2:end), vlmout.wing.geometry.ctrl_pt.c(end/2:end), cfd_3d.Y(1,:), 'linear', 'extrap' );
 for i = 1:size(cfd_3d.eta,1)
-    c_L_RANS_interp(i,:) = interp1( cfd_3d.eta(i,:), cfd_3d.cl(i,:), eta_interp );
+    c_L_RANS_interp(i,:) = interp1( cfd_3d.eta(i,:), cfd_3d.fz(i,:).*Y_diff./(0.5*rho*V^2.*S_local), eta_interp );
 end
+% c_L_RANS_interp = c_L_RANS_interp ./ ( vlmout.wing.geometry.ctrl_pt.c(end/2+1:end) .* diff(vlmout.wing.geometry.vortex.pos(2,end/2:end)) );
 
 [X1,Y1] = meshgrid(cfd_3d.time,eta_interp);
 
@@ -42,7 +51,7 @@ error_mat = c_L_RANS_interp - c_L_VLM_interp( :, eta_interp_idx );
 %% compare steady local c_L
 
 figure
-plot(cfd_3d.Y(20,:)/cfd_3d.Y(20,end),cfd_3d.cl(2,:))
+plot(eta_interp,c_L_RANS_interp(2,:))
 hold on
 plot(vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2, -vlmout.wing.state.aero.coeff_loc.c_XYZ_b(3,:) )
 grid on
@@ -55,7 +64,7 @@ title('Steady local lift coefficient comparison')
 
 %% compare local c_L
 
-time_idx_end = 200;
+time_idx_end = length(cfd_3d.time);
 
 figure
 [X,Y] = meshgrid(cfd_3d.time(1:time_idx_end),eta_interp);

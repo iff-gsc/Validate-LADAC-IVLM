@@ -1,29 +1,43 @@
-function simout = leisaRunVlmValidation( gust, flaps )
+function simout = runVlmValidation( aircraft_name, gust, flaps )
 
 
 %% create wing
+switch aircraft_name
+    case 'leisa'
+        wing = wingCreate(wing_name,50,'spacing','like_chord','is_unsteady',true);
+        fuselage = fuselageCreate(fuselage_name,4,20,'unsteady');
+        
+        % define current rigid body state
+        alpha = deg2rad(1.49+0.5);
+        V = 237.23;
+        h = 10668;
 
-wing = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',true);
-% wing.config.is_circulation_iteration = false;
+        % cg position in wing coordinate system
+        xyz_cg = [-19.5;0;0];
+    case 'se2a'
+        addPathTiGL('2.2.3')
+        tixiHandle = tixiOpenDocumentTry( ... 
+        which ( 'SE2A_AC_Design_MR_V2_BwdSweep_CPACS2_Turbulent.xml' ) );
+        tiglHandle = tiglOpenCPACSConfigurationTry( tixiHandle );
+        wing = wingCreateWithCPACS( tiglHandle, 1, 50, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', true );
+        axis_reversed = [ -1; 1; -1 ];
+        fuselage = fuselageCreateWithCpacs( tiglHandle, 'Fuse', axis_reversed, 20, 'unsteady' );
+        
+        alpha = deg2rad(-0.5);
+        V = 240;
+        h = 6000;
+        xyz_cg = [-19.5;0;0];
+        
+end
 
-lift2bm = wingGetBendingMoment( wing.geometry, 0.05 );
-
-fuselage = fuselageCreate('fuselage_params_leisa',4,20,'unsteady');
-% fuselage = fuselageCreate('fuselage_params_leisa',4,20);
-
-%% define current wing state
-
-% define current rigid body state
-alpha = deg2rad(1.49+0.5);
-beta = deg2rad(0);
-V = 237.23;
 omega = [0;0;0];
-h = 10668;
+beta = 0;
 V_Kb_dt = zeros(3,1);
 omega_dt = zeros(3,1);
 
-% cg position in wing coordinate system
-xyz_cg = [-19.5;0;0];
+
+lift2bm = wingGetBendingMoment( wing.geometry, 0.05 );
+
 
 % define actuator states
 actuators_main_pos = zeros( size( flaps.magn ) );
