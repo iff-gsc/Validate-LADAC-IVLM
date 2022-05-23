@@ -51,7 +51,7 @@ error_mat = c_L_RANS_interp - c_L_VLM_interp( :, eta_interp_idx );
 %% compare steady local c_L
 
 figure
-plot(eta_interp,c_L_RANS_interp(2,:))
+plot(eta_interp,c_L_RANS_interp(1,:))
 hold on
 plot(vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2, -vlmout.wing.state.aero.coeff_loc.c_XYZ_b(3,:) )
 grid on
