@@ -4,8 +4,8 @@ function simout = runVlmValidation( aircraft_name, gust, flaps )
 %% create wing
 switch aircraft_name
     case 'leisa'
-        wing = wingCreate(wing_name,50,'spacing','like_chord','is_unsteady',true);
-        fuselage = fuselageCreate(fuselage_name,4,20,'unsteady');
+        wing = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',true);
+        fuselage = fuselageCreate('fuselage_params_leisa',4,20,'unsteady');
         
         % define current rigid body state
         alpha = deg2rad(1.49+0.5);
