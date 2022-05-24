@@ -1,31 +1,40 @@
-%% init
+% comparison of VLM with RANS simulation during 1-cos gust encounter for
+% LEISA aircraft
 
-% add folders to path
+%% add folders to path
 addPathIvlmValidation();
 
 
 %% load RANS simulation data
-
 cfd_3d = cfdJunaidImportWingAll('GustOnly/wing');
 
 %% run VLM simulation
 
+% peak 1-cos gust velocity, in m/s
 gust.U_ds = 14.49;
+% gust length, in m
 gust.lambda = 50;
-gust.t0 = 0.8;
+% time before gust hits aircraft nose, in s
+gust.t0 = 0.0421;
 
+% aircraft velocity, in m/s
+state.V = 237.23;
+% angle of attack, in rad
+state.alpha = deg2rad(1.49+0.5);
+% altitude, in m
+state.h = 10668;
+
+% flap settings
 flaps.freq = zeros(1,5);
 flaps.magn = zeros(1,5);
 
-vlmout = runVlmValidation( 'leisa', gust, flaps );
+vlmout = runVlmValidation( 'leisa', gust, state, flaps );
 
 %% use the same sampling for VLM and RANS
 
-idx = (vlmout.time + 0.1) > gust.t0;
-
 c_L_VLM_interp = zeros( length(cfd_3d.time), vlmout.wing.n_panel );
 for i = 1:vlmout.wing.n_panel
-    c_L_VLM_interp(:,i) = interp1( vlmout.time(idx)-gust.t0+0.1, vlmout.c_L(idx,i), cfd_3d.time )';
+    c_L_VLM_interp(:,i) = interp1( vlmout.time, vlmout.c_L(:,i), cfd_3d.time )';
 end
 
 eta_interp_idx = vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2 >= min( cfd_3d.eta(1,:) );

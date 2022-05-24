@@ -1,31 +1,49 @@
-%% init
+% comparison of VLM with RANS simulation during 1-cos gust encounter for
+% SE2A MR Bwd Swept V4 (turbulent) aircraft
 
-% add folders to path
+%% add folders to path
 addPathIvlmValidation();
 
 
 %% load RANS simulation data
-
 cfd_3d = cfdKhalidImportWingAll('se2a-data/distributions');
 
 %% run VLM simulation
 
-gust.U_ds = 14.49;
-gust.lambda = 50;
-gust.t0 = 0.8;
+% peak 1-cos gust velocity, in m/s
+gust.U_ds = 14.55;
+% gust length, in m
+gust.lambda = 61;
+% time before gust hits aircraft nose, in s
+gust.t0 = 0.01;
 
+% aircraft velocity, in m/s
+state.V = 240;
+% angle of attack, in rad
+state.alpha = deg2rad(-0.9);
+% altitude, in m
+state.h = 6000;
+
+% flap settings
 flaps.freq = zeros(1,5);
 flaps.magn = zeros(1,5);
 
-vlmout = runVlmValidation( 'se2a', gust, flaps );
+vlmout = runVlmValidation( 'se2a', gust, state, flaps );
+
+%% total lift
+lift_cfd = 2 * trapz( cfd_3d.Y(1,:), cfd_3d.fz(1,:) );
+force_vlm = wingGetGlobalForce( vlmout.wing );
+lift_vlm = -force_vlm(3);
+disp('Total steady lift:')
+disp(['  - RANS: ',num2str(lift_cfd/1000,4),' kN'])
+disp(['  - VLM: ',num2str(lift_vlm/1000,4),' kN']), ...
+disp(['  - relative error: ',num2str(abs(lift_cfd-lift_vlm)/lift_cfd*100,3),' %'])
 
 %% use the same sampling for VLM and RANS
 
-idx = (vlmout.time + 0.1) > gust.t0;
-
 c_L_VLM_interp = zeros( length(cfd_3d.time), vlmout.wing.n_panel );
 for i = 1:vlmout.wing.n_panel
-    c_L_VLM_interp(:,i) = interp1( vlmout.time(idx)-gust.t0+0.1, vlmout.c_L(idx,i), cfd_3d.time )';
+    c_L_VLM_interp(:,i) = interp1( vlmout.time, vlmout.c_L(:,i), cfd_3d.time )';
 end
 
 eta_interp_idx = vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2 >= min( cfd_3d.eta(1,:) );
@@ -42,7 +60,6 @@ S_local = Y_diff .* interp1( vlmout.wing.geometry.ctrl_pt.pos(2,end/2:end), vlmo
 for i = 1:size(cfd_3d.eta,1)
     c_L_RANS_interp(i,:) = interp1( cfd_3d.eta(i,:), cfd_3d.fz(i,:).*Y_diff./(0.5*rho*V^2.*S_local), eta_interp );
 end
-% c_L_RANS_interp = c_L_RANS_interp ./ ( vlmout.wing.geometry.ctrl_pt.c(end/2+1:end) .* diff(vlmout.wing.geometry.vortex.pos(2,end/2:end)) );
 
 [X1,Y1] = meshgrid(cfd_3d.time,eta_interp);
 
@@ -91,7 +108,6 @@ title('Local lift coefficient error during 1-cos gust')
 
 figure
 c_interp = vlmout.wing.state.geometry.ctrl_pt.c(eta_interp_idx);
-% c_interp(:) = 1;
 b_interp = diff( [ eta_interp(1), eta_interp(1:end-1)+diff(eta_interp)/2, eta_interp(end) ] )*vlmout.wing.params.b/2;
 plot( cfd_3d.time, c_L_RANS_interp * ( eta_interp .* c_interp .* b_interp )' / vlmout.wing.params.S )
 hold on
