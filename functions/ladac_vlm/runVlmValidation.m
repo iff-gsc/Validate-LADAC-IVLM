@@ -5,6 +5,7 @@ function simout = runVlmValidation( aircraft_name, gust, state, flaps )
 switch aircraft_name
     case 'leisa'
         wing = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',true);
+        wing_static = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',false);
         fuselage = fuselageCreate('fuselage_params_leisa',4,20,'unsteady');
        
 
@@ -16,6 +17,7 @@ switch aircraft_name
         which ( 'SE2A_AC_Design_MR_V2_BwdSweep_CPACS2_Turbulent.xml' ) );
         tiglHandle = tiglOpenCPACSConfigurationTry( tixiHandle );
         wing = wingCreateWithCPACS( tiglHandle, 1, 50, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', true );
+        wing_static = wingCreateWithCPACS( tiglHandle, 1, 50, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', false );
         axis_reversed = [ -1; 1; -1 ];
         fuselage = fuselageCreateWithCpacs( tiglHandle, 'Fuse', axis_reversed, 20, 'unsteady' );
         
@@ -37,31 +39,12 @@ actuators_main_pos = zeros( size( flaps.magn ) );
 actuators_main_rate = zeros( size( flaps.magn ) );
 
 
-%% structure state
-% structure_state = zeros(2*size(structure_red.K,1),1);
-structure_state = zeros(2*1,1);
-
-structure_accel = zeros(1,1);
-
-%% aerodynamic state
-unst_aero_x = zeros(size(wing.state.aero.unsteady.x));
-unst_aero_X = zeros(size(wing.state.aero.unsteady.X));
-unst_aero_z = zeros(size(wing.state.aero.unsteady.z));
-unst_aero_z2 = zeros(size(wing.state.aero.unsteady.z2));
-alpha_ind = zeros(size(wing.state.aero.circulation.alpha_ind));
-alpha_unst = zeros(size(fuselage.state.aero.unsteady.alpha));
-beta_unst = zeros(size(fuselage.state.aero.unsteady.beta));
-gamma_filt = zeros( 5, size(wing.state.aero.circulation.alpha_ind,2) );
-wing.state.aero.circulation.gamma_filt = gamma_filt;
-
 %% atmosphere
-atmosphereStruct = isAtmosphere(state.h);
+atmosphere_struct = isAtmosphere(state.h);
 
-%% sample time
-dt = 0.001;
-
-%% init state
+%% init time and sample time
 t = 0;
+dt = 0.001;
 
 %% gust
 
@@ -74,8 +57,6 @@ V_Wb = zeros( 3, fuselage.n_segments + 1 );
 V_Wb_dt = zeros( 3, fuselage.n_segments + 1 );
 V3_Wb = zeros( 1, fuselage.n_segments + 1 );
 V3_Wb_dt = zeros( 1, fuselage.n_segments + 1 );
-actuators_main_pos1 = zeros( size( wing.state.actuators.pos ) );
-actuators_main_rate1 = zeros( size( wing.state.actuators.pos ) );
 
 %% init plot values
 num_samples = 1500;
@@ -96,27 +77,21 @@ t_disp = 0.1;
 disp('VLM simulation startet.')
 tic;
 
-% get steady state operating point
-for k = 1:300
-    wing = wingSetState(wing, state.alpha, beta, ...
-        state.V, omega, actuators_main_pos, actuators_main_rate, xyz_cg, ...
-        'V_Kb_dt', V_Kb_dt, 'omega_dt', omega_dt, ...
-        'atmosphere', atmosphereStruct, 'wind', U, U_dt, ...
-        'structure_pos', structure_state(1:end/2), 'structure_vel', structure_state(end/2+1:end), ...
-        'structure_accel', structure_accel, ...
-        'unst_airfoil_state', unst_aero_x, 'dyn_stall_state', unst_aero_X, ...
-        'unst_flap_state', unst_aero_z, 'unst_act2_state', unst_aero_z2, ...
-        'alpha_ind', alpha_ind );
-    % time integration (Euler forward)
-    unst_aero_x = wing.state.aero.unsteady.x + wing.state.aero.unsteady.x_dt * dt;
-    unst_aero_X = wing.state.aero.unsteady.X + wing.state.aero.unsteady.X_dt * dt;
-    unst_aero_z = wing.state.aero.unsteady.z + wing.state.aero.unsteady.z_dt * dt;
-    unst_aero_z2 = wing.state.aero.unsteady.z2 + wing.state.aero.unsteady.z2_dt * dt;
-    
-    alpha_ind = wing.state.aero.circulation.alpha_ind;
-end
+wing_static = wingSetState(wing_static, state.alpha, 0, state.V, ...
+    zeros(3,1), 0, 0, zeros(3,1), 'atmosphere', atmosphere_struct );
 
-% unsteady simulation
+%% init aerodynamic state
+% steady state wing
+[ unst_aero_x, unst_aero_X, unst_aero_z, unst_aero_z2] = ...
+    wingStateGetUnstAeroTrimOp( wing_static.state, ...
+    wing_static.airfoil, wing_static.config );
+alpha_ind = wing_static.state.aero.circulation.alpha_ind;
+
+% fuselage
+alpha_unst = zeros(size(fuselage.state.aero.unsteady.alpha));
+beta_unst = zeros(size(fuselage.state.aero.unsteady.beta));
+
+%% unsteady simulation
 for k = 1:num_samples
     
     if t >= t_disp
@@ -148,9 +123,7 @@ for k = 1:num_samples
     wing_out = wingSetState(wing, state.alpha, beta, ...
         state.V, omega, actuators_main_pos, actuators_main_rate, xyz_cg, ...
         'V_Kb_dt', V_Kb_dt, 'omega_dt', omega_dt, ...
-        'atmosphere', atmosphereStruct, 'wind', U, U_dt, ...
-        'structure_pos', structure_state(1:end/2), 'structure_vel', structure_state(end/2+1:end), ...
-        'structure_accel', structure_accel, ...
+        'atmosphere', atmosphere_struct, 'wind', U, U_dt, ...
         'unst_airfoil_state', unst_aero_x, 'dyn_stall_state', unst_aero_X, ...
         'unst_flap_state', unst_aero_z, 'unst_act2_state', unst_aero_z2, ...
         'alpha_ind', alpha_ind );
@@ -181,8 +154,6 @@ for k = 1:num_samples
     T_downwash = 2*c/state.V;
 %     alpha_ind = alpha_ind + 1./T_downwash .* ( wing.state.aero.circulation.alpha_ind - alpha_ind ) * dt;
     alpha_ind = wing_out.state.aero.circulation.alpha_ind;
-    gamma_filt = gamma_filt + 1./T_downwash .* ( wing_out.state.aero.circulation.gamma - gamma_filt ) * dt;
-    wing_out.state.aero.circulation.gamma_filt = gamma_filt;
     
     t = t + dt;
     
