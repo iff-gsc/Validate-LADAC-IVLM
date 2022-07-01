@@ -32,8 +32,7 @@ vlmout = runVlmValidation( 'se2a', gust, state, flaps );
 
 %% total lift
 lift_cfd = 2 * trapz( cfd_3d.Y(1,:), cfd_3d.fz(1,:) );
-force_vlm = wingGetGlobalForce( vlmout.wing );
-lift_vlm = -force_vlm(3);
+lift_vlm = -vlmout.wing.state.aero.force_glob.R_b(3);
 disp('Total steady lift:')
 disp(['  - RANS: ',num2str(lift_cfd/1000,4),' kN'])
 disp(['  - VLM: ',num2str(lift_vlm/1000,4),' kN']), ...

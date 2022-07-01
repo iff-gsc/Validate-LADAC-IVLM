@@ -4,3 +4,6 @@
 [submodule "data/leisa-data"]
 	path = data/leisa-data
 	url = ../leisa-data.git
+[submodule "libraries/tornado"]
+	path = libraries/tornado
+	url = ../tornado.git

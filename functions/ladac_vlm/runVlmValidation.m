@@ -68,7 +68,7 @@ simout.Delta_alpha = repmat( wing.state.aero.coeff_loc.c_XYZ_b(3,:), num_samples
 simout.C_XYZ_b = repmat( wing.state.aero.coeff_glob.C_XYZ_b, 1, num_samples );
 simout.C_bm = zeros( num_samples, size(lift2bm,1) );
 simout.C_XYZ_fuse_b = repmat( wing.state.aero.coeff_glob.C_XYZ_b, 1, num_samples );
-simout.alpha_unst = zeros( length(fuselage.state.aero.unsteady.alpha), num_samples );
+simout.c_Z_fuse = zeros( size(fuselage.state.aero.R_Ab,2), num_samples );
 simout.num_iter = zeros(1,num_samples);
 
 %% compute initial steady-state wing states
@@ -83,8 +83,7 @@ wing_static = wingSetState(wing_static, state.alpha, 0, state.V, ...
 alpha_ind = wing_static.state.aero.circulation.alpha_ind;
 
 % fuselage
-alpha_unst = zeros(size(fuselage.state.aero.unsteady.alpha));
-beta_unst = zeros(size(fuselage.state.aero.unsteady.beta));
+R_Ab_fuse = zeros(size(fuselage.state.aero.R_Ab_i));
 
 %% unsteady simulation
 % init time
@@ -102,7 +101,7 @@ for k = 1:num_samples
     
     % wing: set wind velocity in case there is a gust
     t0_shift = gust.t0 - ( wing.geometry.ctrl_pt.pos(1,:) + wing.geometry.origin(1) )/state.V;
-    is_no_gust = t < t0_shift | t > t0_shift + 2*pi/f;    
+    is_no_gust = t < t0_shift | t > t0_shift + 2*pi/f; 
     U3( is_no_gust ) = 0;
     U3_dt( is_no_gust ) = 0;
     U3( ~is_no_gust ) = -gust.U_ds/2* (1-cos(f*(t-t0_shift(~is_no_gust))));
@@ -133,18 +132,17 @@ for k = 1:num_samples
     % wing: compute unsteady aerodynamics
     wing_out = wingSetState(wing, state.alpha, beta, ...
         state.V, omega, actuators_main_pos, actuators_main_rate, xyz_cg, ...
-        'atmosphere', atmosphere_struct, 'wind', U, U_dt, ...
+        'atmosphere', atmosphere_struct, 'V_Wb', U, 'V_Wb_dt', U_dt, ...
         'unst_airfoil_state', unst_aero_x, 'dyn_stall_state', unst_aero_X, ...
         'unst_flap_state', unst_aero_z, 'unst_act2_state', unst_aero_z2, ...
         'alpha_ind', alpha_ind );
     
     % fuselage: compute unsteady aerodynamics
     fuselage = fuselageSetState( fuselage,state.alpha,beta,state.V,omega,xyz_cg,...
-        'wind', V_Wb, V_Wb_dt, 'unsteady', alpha_unst, beta_unst );
+        'V_Wb', V_Wb, 'V_Wb_dt', V_Wb_dt, 'unsteady', fuselage.state.aero.R_Ab_i );
     
     % wing: get bending moment coefficient
-    [ XYZ_i_b ]     = wingGetLocalForce( wing_out );
-    lift = -XYZ_i_b(3,:);
+    lift = -wing.state.aero.force_loc.R_i_b(3,:);
     bm = lift2bm * lift';
     C_bm = bm/(0.5*wing_out.state.external.atmosphere.rho*state.V^2*wing_out.params.S*wing_out.params.b/2);
 
@@ -161,7 +159,7 @@ for k = 1:num_samples
     alpha_ind = alpha_ind + alpha_ind_dt * dt;
     
     % fuselage: time integration (Euler forward)
-    alpha_unst = alpha_unst + fuselage.state.aero.unsteady.alpha_dt * dt;
+    R_Ab_fuse = R_Ab_fuse + fuselage.state.aero.R_Ab_i_dt * dt;
     
     % increment time
     t = t + dt;
@@ -173,8 +171,7 @@ for k = 1:num_samples
     simout.num_iter(k) = wing_out.state.aero.circulation.num_iter;
     simout.Delta_alpha(k,:) = wing_out.state.aero.circulation.Delta_alpha;
     simout.C_bm(k,:) = C_bm;
-    simout.alpha_unst(:,k) = fuselage.state.aero.unsteady.alpha';
-    simout.C_XYZ_fuse_b(:,k) = fuselage.state.aero.R_Ab / ...
+    simout.c_Z_fuse_b(:,k) = fuselage.state.aero.R_Ab_i(3,:) / ...
         (0.5*wing_out.state.external.atmosphere.rho*state.V^2*wing_out.params.S);
     
 end
