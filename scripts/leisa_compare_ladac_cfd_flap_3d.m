@@ -25,9 +25,9 @@ state.alpha = deg2rad(1.49+0.5);
 state.h = 10668;
 
 % flap settings
-flaps.freq = [ 0, 29.8, 0, 0, 0 ];
-flaps.magn = [ 0, 7, 0, 0, 0 ];
-flaps.t0 = 0.8;
+flaps.freq = [ 1, 1, 1, 1, 1 ]*27.5;
+flaps.magn = [ 0, 0, 0, 0, 1 ]*7;
+flaps.t0 = [0,0,0,0,0];
 
 vlmout = runVlmValidation( 'leisa', gust, state, flaps );
 
@@ -42,7 +42,7 @@ eta_interp_idx = vlmout.wing.geometry.ctrl_pt.pos(2,:)/vlmout.wing.params.b*2 >=
 eta_interp = vlmout.wing.geometry.ctrl_pt.pos(2,eta_interp_idx)/vlmout.wing.params.b*2;
 c_L_RANS_interp = zeros( length(cfd_3d.time), length( eta_interp ) );
 for i = 1:size(cfd_3d.eta,1)
-    c_L_RANS_interp(i,:) = interp1( cfd_3d.eta(i,:), cfd_3d.cl(i,:), eta_interp );
+    c_L_RANS_interp(i,:) = interp1( cfd_3d.eta(i,:), cfd_3d.cl(i,:), eta_interp,'makima' );
 end
 
 [X1,Y1] = meshgrid(cfd_3d.time,eta_interp);

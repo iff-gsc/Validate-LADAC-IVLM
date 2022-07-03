@@ -17,8 +17,8 @@ t_end = 1.5;
 %% init wing and fuselage
 switch aircraft_name
     case 'leisa'
-        wing = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',true);
-        wing_static = wingCreate('wing_params_leisa_main',50,'spacing','like_chord','is_unsteady',false);
+        wing = wingCreate('wing_params_leisa_main',40,'spacing','like_chord','is_unsteady',true);
+        wing_static = wingCreate('wing_params_leisa_main',40,'spacing','like_chord','is_unsteady',false);
         fuselage = fuselageCreate('fuselage_params_leisa',4,20,'unsteady');
        
         % cg position in wing coordinate system
@@ -28,8 +28,8 @@ switch aircraft_name
         tixiHandle = tixiOpenDocumentTry( ... 
         which ( 'SE2A_AC_Design_MR_V2_BwdSweep_CPACS2_Turbulent.xml' ) );
         tiglHandle = tiglOpenCPACSConfigurationTry( tixiHandle );
-        wing = wingCreateWithCPACS( tiglHandle, 1, 50, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', true );
-        wing_static = wingCreateWithCPACS( tiglHandle, 1, 50, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', false );
+        wing = wingCreateWithCPACS( tiglHandle, 1, 40, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', true );
+        wing_static = wingCreateWithCPACS( tiglHandle, 1, 40, 'spacing', 'like_chord', 'airfoil_method', 'analytic', 'is_unsteady', false );
         axis_reversed = [ -1; 1; -1 ];
         fuselage = fuselageCreateWithCpacs( tiglHandle, 'Fuse', axis_reversed, 20, 'unsteady' );
         
@@ -67,6 +67,7 @@ simout.c_L = repmat( wing.state.aero.coeff_loc.c_XYZ_b(3,:), num_samples, 1 );
 simout.Delta_alpha = repmat( wing.state.aero.coeff_loc.c_XYZ_b(3,:), num_samples, 1 );
 simout.C_XYZ_b = repmat( wing.state.aero.coeff_glob.C_XYZ_b, 1, num_samples );
 simout.C_bm = zeros( num_samples, size(lift2bm,1) );
+simout.actuator_pos = zeros(length(actuators_main_pos),num_samples);
 simout.C_XYZ_fuse_b = repmat( wing.state.aero.coeff_glob.C_XYZ_b, 1, num_samples );
 simout.c_Z_fuse = zeros( size(fuselage.state.aero.R_Ab,2), num_samples );
 simout.num_iter = zeros(1,num_samples);
@@ -120,14 +121,11 @@ for k = 1:num_samples
     V_Wb_dt(3,:) = V3_Wb_dt;
 
     % wing: set flap deflection if it was defined
-    t0_shift_flap = gust.t0;
-    if t < t0_shift_flap || t> t0_shift_flap + 2*pi/f
-        actuators_main_pos(:) = 0;
-        actuators_main_rate(:) = 0;
-    else
-        actuators_main_pos(:) = -flaps.magn/2 .* (1-cos(flaps.freq*(t-t0_shift_flap)));
-        actuators_main_rate(:) = -flaps.magn/2 .* flaps.freq .* sin(flaps.freq.*(t-t0_shift_flap))*0;
-    end
+    actuators_main_pos(:) = -flaps.magn/2 .* (1-cos(flaps.freq.*(t-flaps.t0)));
+    actuators_main_rate(:) = -flaps.magn/2 .* flaps.freq .* sin(flaps.freq.*(t-flaps.t0));
+    idx = t<flaps.t0 | t>flaps.t0 + 2*pi./flaps.freq;
+    actuators_main_pos(idx) = 0;
+    actuators_main_rate(idx) = 0;
 
     % wing: compute unsteady aerodynamics
     wing_out = wingSetState(wing, state.alpha, beta, ...
@@ -148,8 +146,12 @@ for k = 1:num_samples
 
     % wing: 1st order delay downwash
     c = wing_out.params.S/wing_out.params.b;
-    T_downwash = 2*c/state.V;
+    T_downwash = 2*wing_out.geometry.ctrl_pt.c/state.V*2;
+    
+    T_downwash = downwashTimeConstant2(wing_out.state.aero.local_inflow.V_25(1,:), wing_out.state.aero.circulation.Ma, wing_out.geometry.ctrl_pt.c,  0.45);
     alpha_ind_dt = 1./T_downwash .* ( wing_out.state.aero.circulation.alpha_ind - alpha_ind );
+    
+
     
     % wing: time integration (Euler forward)
     unst_aero_x = wing_out.state.aero.unsteady.x + wing_out.state.aero.unsteady.x_dt * dt;
@@ -168,6 +170,7 @@ for k = 1:num_samples
     c_XYZ_a = dcmBaFromAeroAngles(state.alpha,beta)' * wing_out.state.aero.coeff_loc.c_XYZ_b;
     simout.c_L(k,:) = -c_XYZ_a(3,:);
     simout.C_XYZ_b(:,k) = wing_out.state.aero.coeff_glob.C_XYZ_b;
+    simout.actuator_pos(:,k) = wing_out.state.actuators.pos;
     simout.num_iter(k) = wing_out.state.aero.circulation.num_iter;
     simout.Delta_alpha(k,:) = wing_out.state.aero.circulation.Delta_alpha;
     simout.C_bm(k,:) = C_bm;
@@ -181,5 +184,30 @@ simout.wing = wing_out;
 
 elapsed_time = toc;
 disp(['VLM simulation finished after ',num2str(elapsed_time),' seconds.'])
+
+end
+
+
+function T_downwash = downwashTimeConstant(V_A, a, c,  b12)
+% This time constant is similar to the time constant for the 2D airfoil.
+% Validation will show if this assuption is correct but it should not be
+% too wrong.
+
+Ma = min(0.95,V_A / a);
+
+beta_Ma = sqrt( 1 - Ma^2 );
+
+T_downwash = 1 / ( (2*V_A/c)*beta_Ma^2*b12 );
+
+end
+
+function T_downwash = downwashTimeConstant2(V_A, Ma, c,  b12)
+% This time constant is similar to the time constant for the 2D airfoil.
+% Validation will show if this assuption is correct but it should not be
+% too wrong.
+
+beta_Ma = sqrt( 1 - Ma.^2 );
+
+T_downwash = 1 ./ ( (2*V_A./c).*beta_Ma.^2*b12 );
 
 end
